@@ -1,5 +1,3 @@
-# 05_build_features.py
-
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -9,153 +7,170 @@ OUT_DIR = Path("data/model")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
+# =========================================================
+# BUILD CORE TIME WINDOW FEATURES
+# =========================================================
+
+def build_time_window_features(game_df):
+
+    game_df = game_df.sort_values("time_sec").copy()
+
+    score_diff = game_df["score_diff"].values
+    time_sec = game_df["time_sec"].values
+
+    score_change = np.diff(score_diff, prepend=score_diff[0])
+
+    team_pts = np.where(score_change < 0, -score_change, 0)
+    opp_pts  = np.where(score_change > 0,  score_change, 0)
+    events   = (score_change != 0).astype(int)
+
+    team_60 = []
+    opp_60 = []
+    events_60 = []
+
+    for i in range(len(game_df)):
+
+        t = time_sec[i]
+        window_start = t + 60
+
+        mask = (time_sec <= window_start) & (time_sec >= t)
+
+        team_60.append(team_pts[mask].sum())
+        opp_60.append(opp_pts[mask].sum())
+        events_60.append(events[mask].sum())
+
+    game_df["team_points_last_60s"] = team_60
+    game_df["opp_points_last_60s"]  = opp_60
+    game_df["net_points_last_60s"]  = game_df["team_points_last_60s"] - game_df["opp_points_last_60s"]
+    game_df["events_last_60s"]      = events_60
+
+    return game_df
+
+
+# =========================================================
+# CONTINUOUS CONTEXT FEATURES
+# =========================================================
+
+def build_continuous_context_features(game_df):
+
+    game_df = game_df.sort_values("time_sec").copy()
+
+    # dominance
+    game_df["scoring_dominance_ratio"] = (
+        game_df["team_points_last_60s"] /
+        (game_df["opp_points_last_60s"] + 1)
+    )
+
+    # pace
+    game_df["points_per_event_last_60s"] = (
+        (game_df["team_points_last_60s"] + game_df["opp_points_last_60s"]) /
+        (game_df["events_last_60s"] + 1)
+    )
+
+    # stability / volatility
+    game_df["net_points_std_last_5_events"] = (
+        game_df["net_points_last_60s"]
+        .rolling(5, min_periods=1)
+        .std()
+        .fillna(0)
+    )
+
+    # trailing pressure
+    game_df["is_trailing"] = (game_df["score_diff"] < 0).astype(int)
+
+    game_df["trailing_run_strength"] = (
+        game_df["is_trailing"] * game_df["net_points_last_60s"]
+    )
+
+    return game_df
+
+
+# =========================================================
+# LABEL
+# =========================================================
+
 def classify_momentum(x):
-    # Keep your same thresholding style, just applied to momentum_next_10 now.
-    if x > 1:
+    if x >= 3:
         return 1
-    elif x < -1:
+    elif x <= -3:
         return -1
     else:
         return 0
 
 
+# =========================================================
+# MAIN
+# =========================================================
+
 def main():
+
     print("Loading labeled corpus...")
     df = pd.read_parquet(CORPUS_PATH)
     print("Original shape:", df.shape)
 
-    # Need the new label columns to exist
-    required = {"game_id", "play_id", "quarter", "time_sec", "score_diff", "away_team", "home_team", "momentum_next_10"}
-    missing = required - set(df.columns)
-    if missing:
-        raise ValueError(f"pbp_labeled.parquet is missing required columns: {sorted(missing)}")
-
-    # Drop rows where future momentum is undefined (end of game)
     df = df.dropna(subset=["momentum_next_10"])
 
-    # ====== LABEL ======
     df["momentum_class"] = df["momentum_next_10"].apply(classify_momentum)
+    df["momentum_binary"] = (df["momentum_class"] != 0).astype(int)
 
-    # Sort for sequential features
-    df = df.sort_values(["game_id", "play_id"]).reset_index(drop=True)
+    df = df.sort_values(["game_id", "play_id"])
 
-    # =====================================================
-    # BASIC STATE FEATURES
-    # =====================================================
-    df["quarter_num"] = df["quarter"].astype(str).str.extract(r"(\d)").astype(float)
+    # ---- BUILD FEATURES ----
+
+    df = (
+        df.groupby("game_id", group_keys=False)
+        .apply(build_time_window_features)
+    )
+
+    df = (
+        df.groupby("game_id", group_keys=False)
+        .apply(build_continuous_context_features)
+    )
+
+    # ---- GAME CONTEXT ----
+
+    df["quarter_num"] = df["quarter"].str.extract(r"(\d)").astype(int)
     df["abs_score_diff"] = df["score_diff"].abs()
-    df["is_away_leading"] = (df["score_diff"] > 0).astype(int)
 
-    # =====================================================
-    # SCORING FEATURES
-    # =====================================================
-    df["last_score_change"] = (
-        df.groupby("game_id")["score_diff"].diff().fillna(0)
+    QUARTER_LENGTH = 12 * 60
+
+    df["seconds_remaining_in_game"] = (
+        (4 - df["quarter_num"]) * QUARTER_LENGTH + df["time_sec"]
     )
 
-    df["points_this_play"] = df["last_score_change"]
+    # ---- FINAL FEATURE SET ----
 
-    # Who scored?
-    df["away_scored"] = (df["points_this_play"] > 0).astype(int)
-    df["home_scored"] = (df["points_this_play"] < 0).astype(int)
-
-    # Rolling scoring totals
-    df["points_last_3"] = (
-        df.groupby("game_id")["points_this_play"]
-        .rolling(3, min_periods=1)
-        .sum()
-        .reset_index(level=0, drop=True)
-    )
-
-    df["points_last_5"] = (
-        df.groupby("game_id")["points_this_play"]
-        .rolling(5, min_periods=1)
-        .sum()
-        .reset_index(level=0, drop=True)
-    )
-
-    # =====================================================
-    # SCORING RUN LENGTH
-    # =====================================================
-    df["scoring_team"] = np.where(
-        df["points_this_play"] > 0, "away",
-        np.where(df["points_this_play"] < 0, "home", "none")
-    )
-
-    df["scoring_run_length"] = 0
-
-    for game_id, group in df.groupby("game_id", sort=False):
-        run = 0
-        prev_team = None
-        for idx in group.index:
-            team = df.at[idx, "scoring_team"]
-
-            if team == prev_team and team != "none":
-                run += 1
-            elif team != "none":
-                run = 1
-            else:
-                run = 0
-
-            df.at[idx, "scoring_run_length"] = run
-            prev_team = team if team != "none" else prev_team
-
-    # =====================================================
-    # EVENT FEATURES (FROM TEXT)
-    # =====================================================
-    df["play_text"] = (
-        df["away_team"].astype(str).fillna("") + " " +
-        df["home_team"].astype(str).fillna("")
-    ).str.lower()
-
-    df["is_turnover"] = df["play_text"].str.contains("turnover", na=False).astype(int)
-    df["is_foul"] = df["play_text"].str.contains("foul", na=False).astype(int)
-    df["is_rebound"] = df["play_text"].str.contains("rebound", na=False).astype(int)
-    df["is_timeout"] = df["play_text"].str.contains("timeout", na=False).astype(int)
-
-    # Timeout after run
-    df["timeout_after_run"] = (
-        (df["is_timeout"] == 1) &
-        (df["scoring_run_length"] >= 3)
-    ).astype(int)
-
-    # Fill any remaining numeric NaNs safely
-    numeric_cols = df.select_dtypes(include=["number"]).columns
-    df[numeric_cols] = df[numeric_cols].fillna(0)
-
-    # =====================================================
-    # FINAL FEATURE SELECTION
-    # =====================================================
     feature_cols = [
-        "game_id",
-        "play_id",
-        "quarter_num",
-        "time_sec",
+
         "score_diff",
         "abs_score_diff",
-        "is_away_leading",
-        "points_this_play",
-        "points_last_3",
-        "points_last_5",
-        "scoring_run_length",
-        "is_turnover",
-        "is_foul",
-        "is_rebound",
-        "is_timeout",
-        "timeout_after_run",
+        "seconds_remaining_in_game",
+
+        "team_points_last_60s",
+        "opp_points_last_60s",
+        "net_points_last_60s",
+        "events_last_60s",
+
+        "scoring_dominance_ratio",
+        "points_per_event_last_60s",
+        "net_points_std_last_5_events",
+        "trailing_run_strength",
     ]
 
-    final_cols = feature_cols + ["momentum_class"]
+    df_final = df[feature_cols + [
+        "game_id",
+        "play_id",
+        "momentum_binary",
+        "momentum_class"
+    ]]
 
-    df_final = df[final_cols]
+    df_final = df_final.dropna()
 
     out_path = OUT_DIR / "pbp_features.parquet"
     df_final.to_parquet(out_path, index=False)
 
-    print("Saved feature dataset to:", out_path)
+    print("Saved feature dataset:", out_path)
     print("Final shape:", df_final.shape)
-    print("\nClass distribution:")
-    print(df_final["momentum_class"].value_counts())
 
 
 if __name__ == "__main__":
