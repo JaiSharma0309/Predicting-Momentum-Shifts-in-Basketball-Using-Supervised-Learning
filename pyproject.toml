@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "predicting-possession-outcomes-nba-pbp"
+version = "0.1.0"
+description = "A possession-level NBA play-by-play machine learning pipeline built from Basketball Reference data."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Jai Sharma" }
+]
+dependencies = [
+  "beautifulsoup4",
+  "lxml",
+  "matplotlib",
+  "numpy",
+  "pandas",
+  "pyarrow",
+  "requests",
+  "scikit-learn",
+]
+
+[tool.setuptools]
+py-modules = ["utils"]

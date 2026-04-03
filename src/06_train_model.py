@@ -1,3 +1,8 @@
+"""Train and evaluate possession-scoring models on held-out games.
+
+Author: Jai Sharma
+"""
+
 import warnings
 from pathlib import Path
 
@@ -44,6 +49,11 @@ META_COLS = {
 
 
 def split_by_game(df: pd.DataFrame):
+    """Create train, validation, and test masks grouped at the game level.
+
+    @param df: Feature DataFrame containing a ``game_id`` column.
+    @return: Tuple of boolean masks for train, validation, and test rows.
+    """
     games = df["game_id"].unique()
     train_valid_games, test_games = train_test_split(
         games,
@@ -64,6 +74,13 @@ def split_by_game(df: pd.DataFrame):
 
 
 def build_preprocessor(feature_cols, include_text: bool, dense_output: bool):
+    """Build the column-wise preprocessing pipeline for model training.
+
+    @param feature_cols: Ordered list of feature column names to include.
+    @param include_text: Whether to add the text TF-IDF plus SVD branch.
+    @param dense_output: Whether the transformer output should be dense.
+    @return: Configured ``ColumnTransformer`` instance.
+    """
     numeric_cols = [c for c in feature_cols if pd.api.types.is_numeric_dtype(FEATURE_SOURCE[c])]
     categorical_cols = [
         c for c in feature_cols
@@ -109,6 +126,14 @@ def build_preprocessor(feature_cols, include_text: bool, dense_output: bool):
 
 
 def threshold_search(model, X_valid, y_valid, name):
+    """Search a validation-set probability threshold that maximizes macro F1.
+
+    @param model: Fitted classifier exposing ``predict_proba``.
+    @param X_valid: Validation feature matrix.
+    @param y_valid: Validation target vector.
+    @param name: Display name for logging.
+    @return: Best threshold value discovered on the validation set.
+    """
     probs = model.predict_proba(X_valid)[:, 1]
 
     best_f1 = -np.inf
@@ -128,6 +153,13 @@ def threshold_search(model, X_valid, y_valid, name):
 
 
 def evaluate_predictions(name, y_test, preds):
+    """Print and return evaluation metrics for predicted class labels.
+
+    @param name: Display name for the evaluated model.
+    @param y_test: Ground-truth labels.
+    @param preds: Predicted labels.
+    @return: Dictionary containing summary metrics for the evaluation run.
+    """
     print(f"\n===== {name} =====")
     print("Accuracy:", accuracy_score(y_test, preds))
     print("Macro F1:", f1_score(y_test, preds, average="macro"))
@@ -141,6 +173,15 @@ def evaluate_predictions(name, y_test, preds):
 
 
 def evaluate_model(name, model, X_test, y_test, threshold=0.5):
+    """Evaluate a probabilistic classifier using a fixed decision threshold.
+
+    @param name: Display name for the evaluated model.
+    @param model: Fitted classifier exposing ``predict_proba``.
+    @param X_test: Test feature matrix.
+    @param y_test: Test target vector.
+    @param threshold: Probability cutoff used to convert scores into labels.
+    @return: Tuple of predicted labels and a metrics summary dictionary.
+    """
     probs = model.predict_proba(X_test)[:, 1]
     preds = (probs >= threshold).astype(int)
     metrics = evaluate_predictions(name, y_test, preds)
@@ -149,6 +190,13 @@ def evaluate_model(name, model, X_test, y_test, threshold=0.5):
 
 
 def print_confusion_matrix(name, y_true, y_pred):
+    """Print and return the confusion matrix for a model's predictions.
+
+    @param name: Display name for the evaluated model.
+    @param y_true: Ground-truth labels.
+    @param y_pred: Predicted labels.
+    @return: ``numpy.ndarray`` confusion matrix.
+    """
     matrix = confusion_matrix(y_true, y_pred)
     print(f"\n{name} Confusion Matrix:")
     print("rows=true, cols=pred")
@@ -157,6 +205,13 @@ def print_confusion_matrix(name, y_true, y_pred):
 
 
 def save_confusion_matrix_plot(name, matrix, output_path: Path):
+    """Render and save a confusion-matrix heatmap image.
+
+    @param name: Chart title.
+    @param matrix: Confusion matrix array.
+    @param output_path: Destination image path.
+    @return: ``None``.
+    """
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     fig, ax = plt.subplots(figsize=(5, 4))
@@ -179,6 +234,14 @@ def save_confusion_matrix_plot(name, matrix, output_path: Path):
 
 
 def get_slice_metrics(eval_df, y_true, y_pred, slice_col):
+    """Compute accuracy and macro F1 across one evaluation slice column.
+
+    @param eval_df: Evaluation DataFrame containing slice columns.
+    @param y_true: Ground-truth labels aligned to ``eval_df``.
+    @param y_pred: Predicted labels aligned to ``eval_df``.
+    @param slice_col: Column name used to define the slices.
+    @return: DataFrame of per-slice metrics.
+    """
     temp = eval_df[[slice_col]].copy()
     temp["y_true"] = y_true.values
     temp["y_pred"] = y_pred
@@ -199,6 +262,15 @@ def get_slice_metrics(eval_df, y_true, y_pred, slice_col):
 
 
 def print_slice_metrics(name, eval_df, y_true, y_pred, slice_col):
+    """Print and return grouped slice metrics for model diagnostics.
+
+    @param name: Display name for the evaluated model.
+    @param eval_df: Evaluation DataFrame containing slice columns.
+    @param y_true: Ground-truth labels aligned to ``eval_df``.
+    @param y_pred: Predicted labels aligned to ``eval_df``.
+    @param slice_col: Column name used to define the slices.
+    @return: DataFrame of per-slice metrics.
+    """
     print(f"\n{name} by {slice_col}:")
     slice_df = get_slice_metrics(eval_df, y_true, y_pred, slice_col)
     for _, row in slice_df.iterrows():
@@ -211,10 +283,18 @@ def print_slice_metrics(name, eval_df, y_true, y_pred, slice_col):
 
 
 def get_permutation_importance(model, X_test, y_test):
+    """Estimate permutation importance on a capped evaluation sample.
+
+    @param model: Fitted estimator to inspect.
+    @param X_test: Test feature matrix.
+    @param y_test: Test target vector.
+    @return: DataFrame of feature importance means and standard deviations.
+    """
     sample_size = min(len(X_test), 3000)
     X_sample = X_test.iloc[:sample_size]
     y_sample = y_test.iloc[:sample_size]
 
+    # Limit the sample size so repeated shuffling stays tractable.
     result = permutation_importance(
         model,
         X_sample,
@@ -237,6 +317,14 @@ def get_permutation_importance(model, X_test, y_test):
 
 
 def print_permutation_importance(name, model, X_test, y_test):
+    """Print and return top permutation importance rows for a model.
+
+    @param name: Display name for the evaluated model.
+    @param model: Fitted estimator to inspect.
+    @param X_test: Test feature matrix.
+    @param y_test: Test target vector.
+    @return: DataFrame of permutation importances.
+    """
     importance_df = get_permutation_importance(model, X_test, y_test)
 
     print(f"\n{name} Top Permutation Importances:")
@@ -245,6 +333,13 @@ def print_permutation_importance(name, model, X_test, y_test):
 
 
 def save_importance_plot(importance_df: pd.DataFrame, output_path: Path, title: str):
+    """Save a horizontal bar chart of the top permutation importances.
+
+    @param importance_df: Permutation importance DataFrame.
+    @param output_path: Destination image path.
+    @param title: Plot title.
+    @return: ``None``.
+    """
     top_df = importance_df.head(12).iloc[::-1]
 
     fig, ax = plt.subplots(figsize=(8, 5))
@@ -258,6 +353,12 @@ def save_importance_plot(importance_df: pd.DataFrame, output_path: Path, title: 
 
 
 def save_model_comparison_plot(summary_df: pd.DataFrame, output_path: Path):
+    """Save a bar chart comparing held-out macro F1 across models.
+
+    @param summary_df: Model summary metrics DataFrame.
+    @param output_path: Destination image path.
+    @return: ``None``.
+    """
     plot_df = summary_df.copy()
     plot_df["label"] = plot_df["model"].str.replace("HistGradientBoosting", "HGB", regex=False)
 
@@ -277,6 +378,12 @@ def save_model_comparison_plot(summary_df: pd.DataFrame, output_path: Path):
 
 
 def save_slice_performance_plot(slice_df: pd.DataFrame, output_path: Path):
+    """Save quarter-level and late-game slice performance charts.
+
+    @param slice_df: Combined slice-metrics DataFrame.
+    @param output_path: Destination image path.
+    @return: ``None``.
+    """
     quarter_df = slice_df[slice_df["slice_col"] == "quarter"].copy()
     late_df = slice_df[slice_df["slice_col"] == "last_2_minutes"].copy()
 
@@ -305,6 +412,13 @@ def save_slice_performance_plot(slice_df: pd.DataFrame, output_path: Path):
 
 
 def write_business_findings_report(summary_df: pd.DataFrame, slice_df: pd.DataFrame, importance_df: pd.DataFrame):
+    """Write a stakeholder-facing markdown summary of model findings.
+
+    @param summary_df: Model summary metrics DataFrame.
+    @param slice_df: Slice-metrics DataFrame.
+    @param importance_df: Permutation importance DataFrame.
+    @return: ``None``.
+    """
     best_row = summary_df.sort_values("macro_f1", ascending=False).iloc[0]
     baseline_row = summary_df.loc[summary_df["model"] == "Majority Baseline"].iloc[0]
     quarter_df = slice_df[slice_df["slice_col"] == "quarter"].copy()
@@ -408,6 +522,14 @@ def save_results_bundle(
     importance_df,
     confusion_matrix_array,
 ):
+    """Persist tabular outputs, plots, and the findings report.
+
+    @param summary_rows: Iterable of model summary dictionaries.
+    @param slice_frames: List of per-slice metric DataFrames.
+    @param importance_df: Permutation importance DataFrame.
+    @param confusion_matrix_array: Final confusion matrix array to save.
+    @return: ``None``.
+    """
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     CHARTS_DIR.mkdir(parents=True, exist_ok=True)
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -443,6 +565,10 @@ def save_results_bundle(
 
 
 def main():
+    """Train baseline and benchmark models, then save evaluation artifacts.
+
+    @return: ``None``.
+    """
     global FEATURE_SOURCE
 
     print("Loading feature dataset...")
@@ -473,6 +599,7 @@ def main():
 
     summary_rows = []
 
+    # Baseline first so all later models can be compared against a naive anchor.
     baseline = DummyClassifier(strategy="most_frequent")
     baseline.fit(X_train_num, y_train)
     baseline_metrics = evaluate_predictions(
@@ -522,6 +649,7 @@ def main():
     )
     summary_rows.append(logistic_metrics)
 
+    # Use dense preprocessing for HGB because histogram boosting expects dense input.
     hgb_pipe = Pipeline(
         [
             ("prep", build_preprocessor(numeric_feature_cols, include_text=False, dense_output=True)),

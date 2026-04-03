@@ -1,3 +1,8 @@
+"""Generate possession-level modeling features from labeled data.
+
+Author: Jai Sharma
+"""
+
 from pathlib import Path
 
 import numpy as np
@@ -11,6 +16,11 @@ REGULATION_LENGTH = 4 * 12 * 60
 
 
 def build_possession_history_features(game_df: pd.DataFrame) -> pd.DataFrame:
+    """Create recency features from prior possessions within one game.
+
+    @param game_df: Possession-level DataFrame for a single game.
+    @return: DataFrame with lagged and rolling possession-history features.
+    """
     game_df = game_df.sort_values(["start_game_seconds_elapsed", "possession_id"]).copy()
 
     game_df["prev_possession_scored"] = game_df["possession_scored"].shift(1).fillna(0)
@@ -45,6 +55,7 @@ def build_possession_history_features(game_df: pd.DataFrame) -> pd.DataFrame:
     previous_side = None
 
     for offense_side, scored in zip(game_df["offense_side"], game_df["possession_scored"]):
+        # Track consecutive scoring possessions for the same offensive side only.
         if offense_side == previous_side:
             current_streak = current_streak + 1 if scored else 0
         else:
@@ -60,6 +71,11 @@ def build_possession_history_features(game_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_game_state_features(game_df: pd.DataFrame) -> pd.DataFrame:
+    """Create score-state and clock-state features for a single game.
+
+    @param game_df: Possession-level DataFrame for a single game.
+    @return: DataFrame with margin, leverage, and timing features.
+    """
     game_df = game_df.sort_values(["start_game_seconds_elapsed", "possession_id"]).copy()
 
     game_df["abs_offense_margin"] = game_df["offense_score_margin"].abs()
@@ -81,6 +97,11 @@ def build_game_state_features(game_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_text_context(game_df: pd.DataFrame) -> pd.DataFrame:
+    """Concatenate a short rolling window of prior possession text.
+
+    @param game_df: Possession-level DataFrame for a single game.
+    @return: DataFrame with a ``recent_possession_text`` feature added.
+    """
     game_df = game_df.sort_values(["start_game_seconds_elapsed", "possession_id"]).copy()
     previous_text = game_df["possession_text"].shift(1).fillna("")
     previous_text_2 = game_df["possession_text"].shift(2).fillna("")
@@ -94,10 +115,15 @@ def build_text_context(game_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def main():
+    """Build and save the final feature table used for modeling.
+
+    @return: ``None``.
+    """
     print("Loading possession dataset...")
     df = pd.read_parquet(CORPUS_PATH)
     print("Original shape:", df.shape)
 
+    # Drop rows that cannot support margin-based or target-based feature creation.
     df = df.dropna(subset=["offense_score_margin", "points_on_possession"]).copy()
     df = (
         df.groupby("game_id", group_keys=False)

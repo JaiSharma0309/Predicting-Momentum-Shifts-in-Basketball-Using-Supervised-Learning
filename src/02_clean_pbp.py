@@ -1,3 +1,8 @@
+"""Clean raw play-by-play CSV files into a standardized event schema.
+
+Author: Jai Sharma
+"""
+
 import re
 import pandas as pd
 import numpy as np
@@ -14,6 +19,13 @@ OT_CELL_RE = re.compile(r"^\s*(\d+)(st|nd|rd|th)\s+OT\s*$", re.I)
 
 
 def period_label_to_num(label: str) -> int:
+    """Convert a quarter or overtime label into a numeric period index.
+
+    @param label: Period label such as ``"1st Q"`` or ``"2nd OT"``.
+    @return: Integer period number where regulation is 1-4 and overtime begins
+        at 5.
+    @raises ValueError: Raised when the label does not match an expected format.
+    """
     label = str(label).strip()
 
     quarter_match = re.match(r"^(1st|2nd|3rd|4th)\s+Q$", label, re.I)
@@ -28,14 +40,17 @@ def period_label_to_num(label: str) -> int:
     raise ValueError(f"Unrecognized period label: {label}")
 
 def is_quarter_marker_row(row: pd.Series) -> str | None:
-    """
-    Return a period label such as '2nd Q' or '1st OT' if the row is a period
-    marker row, else None.
+    """Detect rows that are repeated quarter or overtime separators.
+
+    @param row: Raw play-by-play row from the scraped table.
+    @return: A normalized period label such as ``"2nd Q"`` or ``"1st OT"``,
+        or ``None`` when the row is not a marker row.
     """
     vals = [str(x).strip() for x in row.tolist() if str(x) != "nan"]
     if not vals:
         return None
 
+    # Basketball Reference repeats the same period label across all visible cells.
     is_quarter_row = all(Q_CELL_RE.match(v) for v in vals)
     is_ot_row = all(OT_CELL_RE.match(v) for v in vals)
 
@@ -44,15 +59,22 @@ def is_quarter_marker_row(row: pd.Series) -> str | None:
     return None
 
 def is_repeated_table_header_row(df: pd.DataFrame, i: int) -> bool:
-    """
-    These rows look like: Time | Away | ... | Score | ... | Home
-    The first cell is literally 'Time'.
+    """Check whether a row is a repeated header embedded in the table body.
+
+    @param df: Raw play-by-play DataFrame.
+    @param i: Integer row index to inspect.
+    @return: ``True`` when the row is a repeated table header, else ``False``.
     """
     first_col = df.columns[0]
     v0 = str(df.at[i, first_col]).strip().lower()
     return v0 == "time"
 
 def clean_one_game(f: Path):
+    """Clean one raw game file and save a quarter-aware version to disk.
+
+    @param f: Path to a raw play-by-play CSV file.
+    @return: ``None``.
+    """
     print(f"\n=== Cleaning {f.name} ===")
 
     game_id = f.stem.replace("pbp_", "")
@@ -67,6 +89,8 @@ def clean_one_game(f: Path):
     for i, row in df.iterrows():
         joined = " ".join(row.astype(str).tolist())
 
+        # Drop repeated headers and period boundary rows while preserving the
+        # last known quarter for the surrounding basketball events.
         if is_repeated_table_header_row(df, i):
             quarter_out.append(current_q)
             drop.append(True)
@@ -116,6 +140,7 @@ def clean_one_game(f: Path):
         lambda x: x if score_pattern.match(x.strip()) else ""
     )
 
+    # Normalize score strings before splitting them into numeric away/home columns.
     score_split = (
         df_clean["score"]
         .str.replace("–", "-", regex=False)
@@ -166,6 +191,10 @@ def clean_one_game(f: Path):
 
 
 def main():
+    """Clean every raw play-by-play CSV found in ``data/raw``.
+
+    @return: ``None``.
+    """
     files = sorted(RAW_DIR.glob("pbp_*.csv"))
     print("Found raw files:", [f.name for f in files])
 

@@ -1,5 +1,7 @@
 # Predicting Possession Outcomes in NBA Play-by-Play
 
+Author: Jai Sharma
+
 This project turns raw NBA play-by-play logs from Basketball Reference into a possession-level machine learning pipeline. The final model predicts whether a possession will end in points using score state, game clock, recent possession history, and short text context from recent play descriptions.
 
 In one line: we started with a vague "momentum" idea, discovered that it was too noisy, and reframed the problem into a stronger and more useful task: **predicting whether the current possession will score**.
@@ -48,6 +50,12 @@ Optional shortcut:
 
 ```bash
 make install
+```
+
+You can also use the project metadata file:
+
+```bash
+pip install -e .
 ```
 
 Recommended assumptions:
@@ -125,3 +133,6 @@ From [results/tables/model_summary.csv](results/tables/model_summary.csv):
 - Model comparison chart: [results/charts/model_comparison_macro_f1.png](results/charts/model_comparison_macro_f1.png)
 - Slice performance chart: [results/charts/slice_performance_macro_f1.png](results/charts/slice_performance_macro_f1.png)
 - Detailed tables: [results/tables/model_summary.csv](results/tables/model_summary.csv)
+
+## License
+This project is licensed under the MIT License. See [LICENSE](/Users/jaisharma/Documents/Predicting-Momentum-Shifts-in-Basketball-Using-Supervised-Learning/LICENSE).

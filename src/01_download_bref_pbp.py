@@ -1,3 +1,11 @@
+"""Download raw Basketball Reference play-by-play tables.
+
+This script pulls play-by-play HTML tables for targeted dates and stores each
+game as a raw CSV file under ``data/raw``.
+
+Author: Jai Sharma
+"""
+
 import os
 import time
 import pandas as pd
@@ -25,6 +33,13 @@ TARGET_NEW_GAMES = 50
 # DOWNLOAD ONE GAME
 # ================================
 def download_bref_pbp(game_code):
+    """Download and persist one Basketball Reference play-by-play table.
+
+    @param game_code: Basketball Reference game identifier such as
+        ``202503190LAL``.
+    @return: ``True`` when a new file is downloaded and saved, otherwise
+        ``False`` if the file already exists or no table is found.
+    """
     outfile = RAW_DIR / f"pbp_{game_code}.csv"
 
     if outfile.exists():
@@ -37,6 +52,7 @@ def download_bref_pbp(game_code):
     r.raise_for_status()
 
     soup = BeautifulSoup(r.text, "html.parser")
+    # The play-by-play rows live in the table with id="pbp".
     table = soup.find("table", {"id": "pbp"})
 
     if table is None:
@@ -55,6 +71,13 @@ def download_bref_pbp(game_code):
 # GET GAME CODES FOR A DATE
 # ================================
 def get_game_codes_for_date(year, month, day):
+    """Collect unique Basketball Reference game codes for a calendar date.
+
+    @param year: Four-digit year to scan.
+    @param month: Numeric month value.
+    @param day: Numeric day-of-month value.
+    @return: A list of game code strings discovered on the date landing page.
+    """
     url = f"https://www.basketball-reference.com/boxscores/?month={month}&day={day}&year={year}"
 
     r = requests.get(url, headers=HEADERS)
@@ -70,6 +93,7 @@ def get_game_codes_for_date(year, month, day):
         if href.endswith(".html"):
             code = href.split("/")[-1].replace(".html", "")
 
+            # Valid game codes are 12-character boxscore identifiers.
             if len(code) == 12 and code not in codes:
                 codes.append(code)
 
@@ -80,6 +104,10 @@ def get_game_codes_for_date(year, month, day):
 # MAIN
 # ================================
 def main():
+    """Scan a date window and download a capped number of unseen games.
+
+    @return: ``None``.
+    """
 
     year = 2025
     month = 3
@@ -93,7 +121,7 @@ def main():
 
     downloaded = 0
 
-    # Scan dates progressively
+    # Walk dates in order so the downloader can resume naturally between runs.
     for day in range(18, 32):
 
         print(f"\nScanning {year}-{month:02d}-{day:02d}")

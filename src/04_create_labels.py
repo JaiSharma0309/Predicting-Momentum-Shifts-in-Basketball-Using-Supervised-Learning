@@ -1,3 +1,8 @@
+"""Create possession-level labels from the event-level play-by-play corpus.
+
+Author: Jai Sharma
+"""
+
 import re
 from pathlib import Path
 
@@ -20,6 +25,11 @@ LAST_FT_RE = re.compile(r"makes .*free throw (\d+) of (\d+)", re.I)
 
 
 def find_corpus_path() -> Path:
+    """Return the first available corpus parquet path from known candidates.
+
+    @return: Existing parquet path under ``data/corpus``.
+    @raises FileNotFoundError: Raised when none of the candidate files exist.
+    """
     for path in CANDIDATE_CORPUS_FILES:
         if path.exists():
             return path
@@ -30,6 +40,11 @@ def find_corpus_path() -> Path:
 
 
 def opposite_side(side: str | None) -> str | None:
+    """Flip ``away`` to ``home`` and vice versa.
+
+    @param side: Possession side label.
+    @return: Opposite side label, or ``None`` when the input is unknown.
+    """
     if side == "away":
         return "home"
     if side == "home":
@@ -38,6 +53,11 @@ def opposite_side(side: str | None) -> str | None:
 
 
 def infer_event_side(row: pd.Series) -> str | None:
+    """Infer which team generated a play description on a given event row.
+
+    @param row: Corpus row containing ``away_team`` and ``home_team`` text.
+    @return: ``"away"``, ``"home"``, or ``None`` when the side is ambiguous.
+    """
     away_has_text = pd.notna(row["away_team"])
     home_has_text = pd.notna(row["home_team"])
 
@@ -49,10 +69,21 @@ def infer_event_side(row: pd.Series) -> str | None:
 
 
 def is_made_field_goal(text: str) -> bool:
+    """Check whether text represents a made non-free-throw field goal.
+
+    @param text: Lowercased play description text.
+    @return: ``True`` when the event is a made field goal, else ``False``.
+    """
     return "makes" in text and "free throw" not in text
 
 
 def is_last_made_free_throw(text: str) -> bool:
+    """Check whether text represents the final made free throw in a trip.
+
+    @param text: Lowercased play description text.
+    @return: ``True`` when the text matches a made final free throw, else
+        ``False``.
+    """
     match = LAST_FT_RE.search(text)
     if not match:
         return False
@@ -60,6 +91,13 @@ def is_last_made_free_throw(text: str) -> bool:
 
 
 def terminal_event_reason(text: str, event_side: str | None, offense_side: str | None) -> tuple[bool, str | None, str | None]:
+    """Determine whether an event ends the current possession.
+
+    @param text: Lowercased event text.
+    @param event_side: Team side associated with the event itself.
+    @param offense_side: Team side currently believed to be on offense.
+    @return: Tuple of ``(is_terminal, reason, next_offense_side)``.
+    """
     if offense_side is None:
         return False, None, None
 
@@ -79,6 +117,11 @@ def terminal_event_reason(text: str, event_side: str | None, offense_side: str |
 
 
 def build_game_possessions(game_df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate one game's events into possession-level records.
+
+    @param game_df: Event-level DataFrame for a single game.
+    @return: Possession-level DataFrame with labels and summary attributes.
+    """
     game_df = game_df.sort_values(["game_seconds_elapsed", "play_id"]).copy()
     game_df["event_side"] = game_df.apply(infer_event_side, axis=1)
     game_df["score_change"] = game_df["score_diff"].diff().fillna(0)
@@ -96,6 +139,8 @@ def build_game_possessions(game_df: pd.DataFrame) -> pd.DataFrame:
     rows = list(game_df.itertuples(index=False))
 
     for i, row in enumerate(rows):
+        # Force a new possession at period boundaries because possession cannot
+        # carry across quarter or overtime breaks.
         if previous_period_num is not None and row.period_num != previous_period_num:
             current_possession_id += 1
             current_offense_side = None
@@ -149,6 +194,7 @@ def build_game_possessions(game_df: pd.DataFrame) -> pd.DataFrame:
 
     offense_is_home = possession_df["offense_side"] == "home"
     possession_points = grouped.apply(
+        # Score totals are computed from the offense team's point stream only.
         lambda g: (
             g["home_points_on_event"].sum()
             if g["offense_side"].iloc[0] == "home"
@@ -180,6 +226,10 @@ def build_game_possessions(game_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def main():
+    """Create and save the possession-labeled corpus parquet file.
+
+    @return: ``None``.
+    """
     corpus_path = find_corpus_path()
     print("Loading corpus:", corpus_path)
 
