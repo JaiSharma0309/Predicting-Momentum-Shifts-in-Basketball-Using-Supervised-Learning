@@ -81,8 +81,8 @@ def get_game_codes_for_date(year, month, day):
 # ================================
 def main():
 
-    year = 2023
-    month = 2
+    year = 2025
+    month = 1
 
     existing_games = {
         f.stem.replace("pbp_", "")

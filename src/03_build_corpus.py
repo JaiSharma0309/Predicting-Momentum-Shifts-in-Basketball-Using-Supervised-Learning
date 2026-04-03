@@ -5,10 +5,11 @@ CLEAN_DIR = Path("data/clean")
 CORPUS_DIR = Path("data/corpus")
 CORPUS_DIR.mkdir(parents=True, exist_ok=True)
 
+REGULATION_PERIODS = 4
+QUARTER_LENGTH = 12 * 60
+OT_LENGTH = 5 * 60
+
 def load_all_clean_games():
-    """
-    Load all cleaned play-by-play files into a single dataframe.
-    """
     files = sorted(CLEAN_DIR.glob("pbp_*_q.csv"))
     print("Loading cleaned files:")
     for f in files:
@@ -17,6 +18,7 @@ def load_all_clean_games():
     dfs = []
     for f in files:
         df = pd.read_csv(f)
+        df["source_row_id"] = range(len(df))
         dfs.append(df)
 
     corpus = pd.concat(dfs, ignore_index=True)
@@ -24,14 +26,10 @@ def load_all_clean_games():
     return corpus
 
 def sort_within_games(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Ensure plays are in correct temporal order within each game.
-    We sort by game_id, then quarter, then time_sec descending
-    (since time_sec is time remaining).
-    """
     df = df.sort_values(
-        ["game_id", "quarter", "time_sec"],
-        ascending=[True, True, False]
+        ["game_id", "period_num", "time_sec", "source_row_id"],
+        ascending=[True, True, False, True],
+        kind="mergesort",
     ).reset_index(drop=True)
 
     return df
@@ -57,10 +55,6 @@ def add_score_differential(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def add_play_index(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Add a play index within each game (0, 1, 2, ...).
-    Useful for windowing and labels later.
-    """
     df["play_id"] = (
         df
         .groupby("game_id")
@@ -70,41 +64,50 @@ def add_play_index(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def add_corpus_text(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Create a single text field per play for corpus analysis.
-    This combines away and home play descriptions into one string.
-    """
     df["play_text"] = (
         df["away_team"].fillna("") + " " + df["home_team"].fillna("")
     ).str.strip()
 
     return df
 
+def add_absolute_game_time(df: pd.DataFrame) -> pd.DataFrame:
+    regulation_elapsed = (df["period_num"] - 1) * QUARTER_LENGTH
+    overtime_elapsed = (
+        (REGULATION_PERIODS * QUARTER_LENGTH)
+        + (df["period_num"] - REGULATION_PERIODS - 1) * OT_LENGTH
+    )
+
+    df["period_length_sec"] = df["period_num"].apply(
+        lambda period_num: QUARTER_LENGTH if period_num <= REGULATION_PERIODS else OT_LENGTH
+    )
+    df["period_start_elapsed"] = regulation_elapsed.where(
+        df["period_num"] <= REGULATION_PERIODS,
+        overtime_elapsed,
+    )
+    df["game_seconds_elapsed"] = (
+        df["period_start_elapsed"] + (df["period_length_sec"] - df["time_sec"])
+    )
+
+    return df
+
 def main():
-    # STEP 1: load all cleaned games
     corpus = load_all_clean_games()
-
-    # STEP 2: ensure correct ordering
     corpus = sort_within_games(corpus)
-
-    # STEP 3: forward-fill scores within each game
     corpus = forward_fill_scores(corpus)
-
-    # STEP 4: add simple derived features
+    corpus = add_absolute_game_time(corpus)
     corpus = add_score_differential(corpus)
     corpus = add_play_index(corpus)
-
-    # STEP 5: add corpus text (NLP-friendly column)
     corpus = add_corpus_text(corpus)
-
-    # STEP 6: final column order (clean and readable)
+    
     corpus = corpus[
         [
             "game_id",
             "play_id",
+            "period_num",
             "quarter",
             "time",
             "time_sec",
+            "game_seconds_elapsed",
             "play_text",
             "away_team",
             "home_team",
@@ -114,7 +117,6 @@ def main():
         ]
     ]
 
-    # Save as Parquet (efficient for large datasets)
     out_path = CORPUS_DIR / "pbp_all_games.parquet"
     corpus.to_parquet(out_path, index=False)
 
@@ -123,8 +125,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-import pandas as pd
-
-corpus = pd.read_parquet("data/corpus/pbp_all_games.parquet")
-print(corpus.head())
