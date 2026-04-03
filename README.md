@@ -98,6 +98,37 @@ Notes:
 - `06_train_model.py` performs grouped train/validation/test evaluation by `game_id`, tunes thresholds on the validation split, and writes organized outputs into `results/charts`, `results/reports`, and `results/tables`.
 - To reproduce the current results exactly, keep `RANDOM_STATE = 42` in [src/06_train_model.py](/Users/jaisharma/Documents/Predicting-Momentum-Shifts-in-Basketball-Using-Supervised-Learning/src/06_train_model.py).
 
+## File Structure
+```text
+.
+├── .github/
+│   └── workflows/
+│       └── python-ci.yml
+├── data/
+│   ├── raw/          # downloaded Basketball Reference CSV files
+│   ├── clean/        # cleaned per-game play-by-play files
+│   ├── corpus/       # merged parquet corpora and labeled datasets
+│   └── model/        # final feature tables used for training
+├── results/
+│   ├── charts/       # exported plots and confusion matrices
+│   ├── reports/      # written findings and business summary
+│   └── tables/       # CSV and JSON metrics outputs
+├── src/
+│   ├── 01_download_bref_pbp.py
+│   ├── 02_clean_pbp.py
+│   ├── 03_build_corpus.py
+│   ├── 04_create_labels.py
+│   ├── 05_build_features.py
+│   └── 06_train_model.py
+├── .gitignore
+├── LICENSE
+├── Makefile
+├── pyproject.toml
+├── README.md
+├── requirements.txt
+└── utils.py
+```
+
 ## What Each File Does
 ### Pipeline Scripts
 - [src/01_download_bref_pbp.py](/Users/jaisharma/Documents/Predicting-Momentum-Shifts-in-Basketball-Using-Supervised-Learning/src/01_download_bref_pbp.py): downloads Basketball Reference play-by-play tables into `data/raw/`
