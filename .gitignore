@@ -1,0 +1,16 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+
+# macOS
+.DS_Store
+
+# Notebook / editor noise
+.ipynb_checkpoints/
+
+# Local matplotlib cache
+.matplotlib/

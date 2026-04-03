@@ -10,6 +10,7 @@ In one line: we started with a vague "momentum" idea, discovered that it was too
 - Best model: `Hybrid Text + HistGradientBoosting`
 - Held-out test performance: `0.794` accuracy, `0.786` macro F1
 - Key finding: score margin and recent possession context carry most of the signal; text adds little to no extra lift on the larger dataset
+- Repo note: this repository includes a representative sample of generated data/artifacts for structure and examples; full local datasets may be larger than what is tracked in Git
 
 ![Model Comparison](results/charts/model_comparison_macro_f1.png)
 
@@ -53,6 +54,7 @@ Recommended assumptions:
 - Python `3.10+`
 - Run commands from the repo root
 - If you already have the raw `.csv` files in `data/raw/`, you can skip the download step
+- Only a subset of raw/processed files may be pushed to GitHub; rerun the pipeline locally to regenerate the full dataset and results
 
 ## How To Run The Project
 Run the pipeline from top to bottom:
