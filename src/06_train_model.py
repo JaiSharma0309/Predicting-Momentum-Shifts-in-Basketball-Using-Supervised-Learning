@@ -308,8 +308,13 @@ def write_business_findings_report(summary_df: pd.DataFrame, slice_df: pd.DataFr
     best_row = summary_df.sort_values("macro_f1", ascending=False).iloc[0]
     baseline_row = summary_df.loc[summary_df["model"] == "Majority Baseline"].iloc[0]
     quarter_df = slice_df[slice_df["slice_col"] == "quarter"].copy()
+    meaningful_quarter_df = quarter_df.loc[quarter_df["n"] >= 500].copy()
     weakest_quarter = quarter_df.sort_values("macro_f1").iloc[0]
-    strongest_quarter = quarter_df.sort_values("macro_f1", ascending=False).iloc[0]
+    strongest_quarter = (
+        meaningful_quarter_df.sort_values("macro_f1", ascending=False).iloc[0]
+        if not meaningful_quarter_df.empty
+        else quarter_df.sort_values("macro_f1", ascending=False).iloc[0]
+    )
     clock_df = slice_df[slice_df["slice_col"] == "last_2_minutes"].copy()
     clock_df["slice_value"] = clock_df["slice_value"].astype(str)
     final_two = clock_df.loc[clock_df["slice_value"] == "1"].iloc[0]
@@ -319,6 +324,39 @@ def write_business_findings_report(summary_df: pd.DataFrame, slice_df: pd.DataFr
     away_offense = home_df.loc[home_df["slice_value"] == "0"].iloc[0]
     home_offense = home_df.loc[home_df["slice_value"] == "1"].iloc[0]
     top_features = importance_df.head(5)["feature"].tolist()
+    numeric_hgb_f1 = summary_df.loc[
+        summary_df["model"] == "Numeric HistGradientBoosting",
+        "macro_f1",
+    ].iloc[0]
+    hybrid_hgb_f1 = summary_df.loc[
+        summary_df["model"] == "Hybrid Text + HistGradientBoosting",
+        "macro_f1",
+    ].iloc[0]
+
+    if hybrid_hgb_f1 > numeric_hgb_f1 + 0.001:
+        text_lift_line = (
+            f"Text adds a measurable lift. Numeric HGB reached **{numeric_hgb_f1:.3f}** "
+            f"macro F1, while the hybrid text model reached **{hybrid_hgb_f1:.3f}**."
+        )
+        text_interp_line = (
+            "Text is adding incremental value on top of the structured game-state features."
+        )
+    elif hybrid_hgb_f1 < numeric_hgb_f1 - 0.001:
+        text_lift_line = (
+            f"Text did not help on this run. Numeric HGB reached **{numeric_hgb_f1:.3f}** "
+            f"macro F1, compared with **{hybrid_hgb_f1:.3f}** for the hybrid text model."
+        )
+        text_interp_line = (
+            "The business value is currently driven primarily by structured state and recency features."
+        )
+    else:
+        text_lift_line = (
+            f"Text added little to no measurable lift on this run. Numeric HGB and the hybrid "
+            f"text model both landed at about **{hybrid_hgb_f1:.3f}** macro F1."
+        )
+        text_interp_line = (
+            "The business value is currently driven primarily by structured state and recency features."
+        )
 
     report = f"""# Business Findings
 
@@ -329,7 +367,7 @@ This project converted raw Basketball Reference play-by-play logs into a possess
 - The original momentum framing was too noisy to support reliable decision-making. Reframing the problem to possession-level scoring made the signal strong and usable.
 - The best model beats the naive baseline by **{best_row['macro_f1'] - baseline_row['macro_f1']:.3f} macro F1** and **{best_row['accuracy'] - baseline_row['accuracy']:.3f} accuracy**.
 - Score context matters most. The top predictive drivers are `{top_features[0]}`, `{top_features[1]}`, `{top_features[2]}`, `{top_features[3]}`, and `{top_features[4]}`.
-- Text adds a small but real lift. Numeric HGB reached **{summary_df.loc[summary_df['model'] == 'Numeric HistGradientBoosting', 'macro_f1'].iloc[0]:.3f}** macro F1, while the hybrid text model reached **{best_row['macro_f1']:.3f}**.
+- {text_lift_line}
 
 ## Why This Matters
 - Coaches, analysts, or product stakeholders can now identify when a possession is likely to produce points using only information available at possession start.
@@ -346,7 +384,7 @@ This project converted raw Basketball Reference play-by-play logs into a possess
 ## Business Interpretation
 - Most of the predictive value comes from game state and recent possession context, which means score margin and recent flow are actionable leading indicators.
 - End-of-game possessions are harder to predict, likely because teams change pace, foul intentionally, and make higher-variance decisions late.
-- Since text adds only a modest gain, the business value is currently driven more by structured state features than by narrative play descriptions.
+- {text_interp_line}
 
 ## Recommended Next Steps
 1. Productize the possession-scoring model as the main benchmark, not the old momentum label.

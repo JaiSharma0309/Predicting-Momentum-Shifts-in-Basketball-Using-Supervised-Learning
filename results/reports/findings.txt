@@ -1,49 +1,41 @@
 Model Summary
-                             model  accuracy  macro_f1  threshold  support
-                 Majority Baseline  0.520058  0.342130        NaN    10295
-                  Numeric Logistic  0.768820  0.757104       0.58    10295
-      Numeric HistGradientBoosting  0.785527  0.776132       0.52    10295
-Hybrid Text + HistGradientBoosting  0.786304  0.776587       0.56    10295
+model                             accuracy  macro_f1  threshold  support
+Majority Baseline                 0.518955  0.341653        NaN    16539
+Numeric Logistic                  0.777193  0.768256       0.54    16539
+Numeric HistGradientBoosting      0.793821  0.785745       0.50    16539
+Hybrid Text + HistGradientBoosting 0.793821 0.785745       0.50    16539
+
+Key Findings
+- Expanded dataset size: 415 games, 192,886 plays, 82,961 possessions.
+- Reframing from noisy momentum labeling to possession scoring remains the key modeling win.
+- Score margin and recent possession context are still the dominant predictors.
+- On the larger dataset, the hybrid text model tied the numeric HGB model, so text does not currently add measurable lift.
 
 Hybrid HGB Classification Report
               precision    recall  f1-score   support
 
-           0       0.72      0.96      0.82      5354
-           1       0.93      0.60      0.73      4941
+           0       0.73      0.95      0.83      8583
+           1       0.92      0.62      0.74      7956
 
-    accuracy                           0.79     10295
-   macro avg       0.82      0.78      0.78     10295
-weighted avg       0.82      0.79      0.78     10295
-
+    accuracy                           0.79     16539
+   macro avg       0.83      0.79      0.79     16539
+weighted avg       0.82      0.79      0.79     16539
 
 Hybrid HGB Confusion Matrix
-[[5121  233]
- [1967 2974]]
+[[8170  413]
+ [2997 4959]]
 
 Slice Metrics
-      slice_col slice_value    n  accuracy  macro_f1
-        quarter      1st OT   76  0.815789  0.804842
-        quarter       1st Q 2578  0.808766  0.799682
-        quarter      2nd OT   22  0.863636  0.861053
-        quarter       2nd Q 2589  0.794902  0.783505
-        quarter       3rd Q 2570  0.777043  0.769430
-        quarter       4th Q 2460  0.761789  0.750826
- last_2_minutes           0 9704  0.788850  0.779177
- last_2_minutes           1  591  0.744501  0.734263
-offense_is_home           0 5142  0.790354  0.780184
-offense_is_home           1 5153  0.782263  0.772999
+- 1st Q macro F1: 0.8158
+- 4th Q macro F1: 0.7577
+- Before final 2 minutes macro F1: 0.7885
+- Final 2 minutes macro F1: 0.7351
+- Away offense macro F1: 0.7906
+- Home offense macro F1: 0.7809
 
 Top Permutation Importances
-                        feature  importance_mean  importance_std
-           offense_score_margin         0.259615        0.003505
-            prev_offense_margin         0.257617        0.004783
-         prev_possession_points         0.056599        0.005612
-                prev_num_events         0.055322        0.005979
-             abs_offense_margin         0.016172        0.002226
-         prev_possession_scored         0.002908        0.002066
-                 start_time_sec         0.002536        0.000958
-      points_last_5_possessions         0.001062        0.001938
-                offense_is_home         0.000848        0.001513
-      points_last_3_possessions         0.000825        0.000504
-     start_game_seconds_elapsed         0.000760        0.001556
-seconds_remaining_in_regulation         0.000704        0.001063
+- offense_score_margin
+- prev_offense_margin
+- prev_num_events
+- prev_possession_points
+- abs_offense_margin

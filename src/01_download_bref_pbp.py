@@ -18,7 +18,7 @@ HEADERS = {
 }
 
 REQUEST_DELAY = 5  # ⭐ safe → 12 requests/min
-TARGET_NEW_GAMES = 20
+TARGET_NEW_GAMES = 50
 
 
 # ================================
@@ -82,7 +82,7 @@ def get_game_codes_for_date(year, month, day):
 def main():
 
     year = 2025
-    month = 1
+    month = 3
 
     existing_games = {
         f.stem.replace("pbp_", "")
@@ -114,7 +114,7 @@ def main():
                 downloaded += 1
 
             if downloaded >= TARGET_NEW_GAMES:
-                print("\n Downloaded 20 new games — stopping.")
+                print("\n Downloaded 50 new games — stopping.")
                 return
 
 

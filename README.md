@@ -6,10 +6,10 @@ In one line: we started with a vague "momentum" idea, discovered that it was too
 
 ## Snapshot
 - Data source: Basketball Reference play-by-play tables
-- Final dataset: `118,450` plays -> `50,654` possessions across `252` games
+- Final dataset: `192,886` plays -> `82,961` possessions across `415` games
 - Best model: `Hybrid Text + HistGradientBoosting`
-- Held-out test performance: `0.786` accuracy, `0.777` macro F1
-- Key finding: score margin and recent possession context carry most of the signal; text helps a little
+- Held-out test performance: `0.794` accuracy, `0.786` macro F1
+- Key finding: score margin and recent possession context carry most of the signal; text adds little to no extra lift on the larger dataset
 
 ![Model Comparison](results/charts/model_comparison_macro_f1.png)
 
@@ -26,20 +26,27 @@ In one line: we started with a vague "momentum" idea, discovered that it was too
 ## Main Findings
 - The original "momentum shift in the next 120 seconds" label was too noisy to model well.
 - Reframing the task to possession-level scoring produced a much stronger and more interpretable signal.
-- The best model, `Hybrid Text + HistGradientBoosting`, reached `0.7766` macro F1 on held-out games.
-- The biggest drivers are `offense_score_margin`, `prev_offense_margin`, `prev_possession_points`, `prev_num_events`, and `abs_offense_margin`.
+- On the expanded 415-game dataset, the best held-out result reached `0.7857` macro F1 and `0.7938` accuracy.
+- The biggest drivers are `offense_score_margin`, `prev_offense_margin`, `prev_num_events`, `prev_possession_points`, and `abs_offense_margin`.
 - Performance is strongest earlier in games and weakest in the `4th Q` and final two minutes, which suggests late-game possessions are higher variance and strategically different.
+- On this larger run, the text-augmented model tied the numeric HGB model, which means structured game-state features are carrying nearly all of the predictive value.
 
 Business-facing summary: [results/reports/business_findings.md](results/reports/business_findings.md)
 
 ## Reproducible Setup
-Use a clean Python environment and install the packages below.
+Use a clean Python environment and install the pinned project dependencies from `requirements.txt`.
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-pip install pandas numpy pyarrow requests beautifulsoup4 lxml scikit-learn matplotlib
+pip install -r requirements.txt
+```
+
+Optional shortcut:
+
+```bash
+make install
 ```
 
 Recommended assumptions:
@@ -57,6 +64,23 @@ python src/03_build_corpus.py
 python src/04_create_labels.py
 python src/05_build_features.py
 python src/06_train_model.py
+```
+
+Or use the Makefile shortcuts:
+
+```bash
+make run
+```
+
+Useful individual commands:
+
+```bash
+make download
+make clean
+make corpus
+make labels
+make features
+make train
 ```
 
 Notes:
@@ -89,10 +113,10 @@ From [results/tables/model_summary.csv](results/tables/model_summary.csv):
 
 | Model | Accuracy | Macro F1 |
 |---|---:|---:|
-| Majority Baseline | 0.520 | 0.342 |
-| Numeric Logistic | 0.769 | 0.757 |
-| Numeric HistGradientBoosting | 0.786 | 0.776 |
-| Hybrid Text + HistGradientBoosting | **0.786** | **0.777** |
+| Majority Baseline | 0.519 | 0.342 |
+| Numeric Logistic | 0.777 | 0.768 |
+| Numeric HistGradientBoosting | 0.794 | 0.786 |
+| Hybrid Text + HistGradientBoosting | **0.794** | **0.786** |
 
 ## Where To Look First
 - Quick business summary: [results/reports/business_findings.md](results/reports/business_findings.md)
