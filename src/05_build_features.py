@@ -116,7 +116,6 @@ def main():
     )
 
     feature_cols = [
-        "possession_id",
         "period_num",
         "start_time_sec",
         "start_game_seconds_elapsed",
